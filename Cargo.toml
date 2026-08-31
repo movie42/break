@@ -1,0 +1,23 @@
+[workspace]
+members = [
+  "src/system/break-core",
+  "src/system/break-enforcer",
+  "src/system/break-daemon",
+  "src/system/break-app",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["movie42"]
+license = "MIT"
+
+[workspace.dependencies]
+break-core = { path = "src/system/break-core" }
+break-enforcer = { path = "src/system/break-enforcer" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+thiserror = "2"
+directories = "6"

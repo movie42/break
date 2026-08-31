@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  --app-bg: oklch(0.97 0.008 85);
+  --app-surface: oklch(1 0 0);
+  --app-surface-muted: oklch(0.955 0.01 85);
+  --app-border: oklch(0.89 0.012 85);
+  --app-text: oklch(0.26 0.015 60);
+  --app-text-muted: oklch(0.53 0.014 65);
+  --app-accent: oklch(0.55 0.13 45);
+  --app-accent-hover: oklch(0.48 0.13 45);
+  --app-accent-fg: oklch(0.99 0.005 85);
+  --app-notice-bg: oklch(0.95 0.045 85);
+  --app-notice-border: oklch(0.83 0.09 82);
+  --app-notice-text: oklch(0.38 0.07 65);
+  --app-danger: oklch(0.52 0.16 25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: oklch(0.19 0.008 70);
+    --app-surface: oklch(0.235 0.009 70);
+    --app-surface-muted: oklch(0.27 0.01 70);
+    --app-border: oklch(0.34 0.012 70);
+    --app-text: oklch(0.93 0.008 80);
+    --app-text-muted: oklch(0.71 0.012 75);
+    --app-accent: oklch(0.7 0.12 50);
+    --app-accent-hover: oklch(0.77 0.12 50);
+    --app-accent-fg: oklch(0.2 0.02 60);
+    --app-notice-bg: oklch(0.3 0.04 75);
+    --app-notice-border: oklch(0.45 0.07 75);
+    --app-notice-text: oklch(0.9 0.04 85);
+    --app-danger: oklch(0.72 0.14 28);
+  }
+}
+
+@theme inline {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Pretendard Variable", Pretendard,
+    "Apple SD Gothic Neo", "Segoe UI", "Malgun Gothic", sans-serif;
+
+  --color-bg: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-surface-muted: var(--app-surface-muted);
+  --color-line: var(--app-border);
+  --color-ink: var(--app-text);
+  --color-ink-muted: var(--app-text-muted);
+  --color-accent: var(--app-accent);
+  --color-accent-hover: var(--app-accent-hover);
+  --color-accent-fg: var(--app-accent-fg);
+  --color-notice: var(--app-notice-bg);
+  --color-notice-line: var(--app-notice-border);
+  --color-notice-ink: var(--app-notice-text);
+  --color-danger: var(--app-danger);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--font-sans);
+}
