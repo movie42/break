@@ -23,7 +23,7 @@
 
 **이번 셋업의 성패는 2번에서 차단 로직을 얹을 때 뼈대를 뜯어고치지 않아도 되느냐에 달려 있다.** 그래서 차단 실행부를 Tauri에 의존하지 않는 별도 크레이트로 미리 떼어둔다. Tauri 의존이 섞이면 GUI 없이 도는 root 데몬에 웹뷰가 딸려온다.
 
-- 포함: 프로젝트 스캐폴딩, Cargo 워크스페이스, 규칙 파일 포맷과 스케줄 판정, `trait Enforcer` 정의, 사이트·시간대를 편집하는 GUI, CI
+- 포함: 프로젝트 스캐폴딩, Cargo 워크스페이스, 규칙 파일 포맷과 스케줄 판정, `trait Enforcer` 정의, 사이트·시간대를 편집하는 GUI
 - 제외: 사이트 차단 실행, 앱 차단 실행, 데몬, 우회 방지 장치, 모바일
 
 ## Phase 1: 프로젝트 스캐폴딩
@@ -69,7 +69,7 @@
 - [x] 드라이런 스위치 (`src/system/break-enforcer/src/lib.rs`) — `BREAK_DRY_RUN=1`이면 실제 실행 대신 대상만 로그로 남긴다. 다음 작업부터 시스템 파일과 프로세스를 건드리므로 그 전에 자리를 만들어 둔다
 - 검증: `cargo test -p break-enforcer` — 각 메서드가 `NotPrivileged`를 반환하고 패닉하지 않는다.
 
-## Phase 5: GUI와 CI
+## Phase 5: GUI
 
 - [x] Tauri 커맨드 등록 (`src/system/break-app/src/lib.rs`) — `load_rules`, `save_rules`
 - [x] 트레이 아이콘과 메뉴 (`src/system/break-app/src/tray.rs`) — 열기 / 종료. Tauri 2는 트레이가 내장이라 플러그인을 붙이지 않는다
@@ -77,7 +77,6 @@
 - [x] 사이트 목록 편집 화면 (`src/client/features/sites/`) — 도메인 추가·삭제
 - [x] 시간대 편집 화면 (`src/client/features/schedule/`) — 요일 선택과 시작·종료 시각
 - [x] 상태 화면 (`src/client/features/status/`) — 현재 차단 구간인지 여부와, 차단이 아직 실행되지 않는다는 안내
-- [x] GitHub Actions 워크플로 (`.github/workflows/ci.yml`) — `macos-latest`와 `windows-latest`에서 `cargo check --workspace`와 `pnpm build`
 - 검증: 앱에서 사이트와 시간대를 추가하고 앱을 껐다 켜면 그대로 남아 있다. React → Tauri 커맨드 → `break-core` → 디스크까지 전 구간이 연결됐다는 뜻이고, 다음 작업의 데몬은 이 파일을 읽기만 하면 된다.
 
 ## 진행 기록
@@ -120,3 +119,4 @@
 - 블로커: 없음
 - 전체 구현 완료
 - 결정: Node를 쓰지 않는다. `.nvmrc`를 지우고 `.bun-version`으로 bun 1.4.0을 고정했다. PATH에서 node와 npm을 빼고 `bun run lint`·`bun run build`·`bun run tauri dev`가 전부 도는 것을 확인했다
+- 결정: 사용자 요청으로 GitHub Actions CI를 뺐다. Windows 검증은 로컬의 `cargo check -p break-enforcer --target x86_64-pc-windows-msvc`로만 한다

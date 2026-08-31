@@ -28,6 +28,13 @@ bun run build         # 프론트엔드 빌드
 cargo test --workspace
 ```
 
+Windows 코드는 Mac에서 컴파일 여부만 확인합니다. `check`는 링크를 하지 않아 MSVC 툴체인 없이 됩니다.
+
+```bash
+rustup target add x86_64-pc-windows-msvc
+cargo check -p break-enforcer --target x86_64-pc-windows-msvc
+```
+
 bun만 씁니다. 버전은 `.bun-version`에 고정돼 있고, Node는 필요 없습니다.
 
 ## 규칙 파일
