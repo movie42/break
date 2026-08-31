@@ -98,4 +98,5 @@ sudo killall -HUP mDNSResponder
 
 ## 문서
 
-계획과 명세는 `docs/initial-setup/plans/`와 `docs/site-blocking/plans/`에 있습니다.
+앞으로의 방향은 `docs/roadmap.md`에 있습니다. 지난 작업의 계획과 명세는
+`docs/initial-setup/plans/`와 `docs/site-blocking/plans/`에 있습니다.
