@@ -291,12 +291,12 @@ name = "break-app"
 version = "0.1.0"
 dependencies = [
  "break-core",
- "break-enforcer",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

@@ -1,11 +1,5 @@
-use break_core::rules::{AppTarget, SiteTarget};
+use break_core::rules::AppTarget;
 use break_enforcer::{platform_enforcer, Enforcer, Error};
-
-fn sites() -> Vec<SiteTarget> {
-    vec![SiteTarget {
-        host: "youtube.com".to_string(),
-    }]
-}
 
 fn apps() -> Vec<AppTarget> {
     vec![AppTarget {
@@ -15,14 +9,9 @@ fn apps() -> Vec<AppTarget> {
 }
 
 #[test]
-fn every_method_returns_not_privileged_without_panicking() {
+fn app_blocking_is_not_implemented_yet() {
     let enforcer = platform_enforcer();
 
-    assert!(matches!(
-        enforcer.apply_sites(&sites()),
-        Err(Error::NotPrivileged)
-    ));
-    assert!(matches!(enforcer.clear_sites(), Err(Error::NotPrivileged)));
     assert!(matches!(
         enforcer.apply_apps(&apps()),
         Err(Error::NotPrivileged)

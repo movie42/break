@@ -37,15 +37,6 @@ export function StatusPanel({ state }: StatusPanelProps) {
         <p className="mt-2 text-sm text-ink-muted">{detail}</p>
       </div>
 
-      {state.enforcement.kind !== "applied" && (
-        <div className="rounded-lg border border-line bg-surface-muted p-4">
-          <p className="text-sm font-medium text-ink">실행 불가</p>
-          <p className="mt-1 text-sm text-ink-muted">
-            {state.enforcement.message}
-          </p>
-        </div>
-      )}
-
       <dl className="rounded-lg border border-line bg-surface p-4 text-sm">
         <div className="flex justify-between gap-4 py-1">
           <dt className="text-ink-muted">차단 사이트</dt>

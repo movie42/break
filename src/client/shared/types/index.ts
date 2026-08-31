@@ -8,4 +8,4 @@ export type {
   Weekday,
 } from "./rules";
 export { EMPTY_RULES, RULES_VERSION, WEEKDAYS, WEEKDAY_LABELS } from "./rules";
-export type { AppState, EnforcementStatus } from "./app-state";
+export type { AppState, DaemonStatus } from "./app-state";

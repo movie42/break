@@ -1,5 +1,7 @@
 use break_core::rules::{AppTarget, SiteTarget};
 
+pub mod hosts;
+
 #[cfg(target_os = "macos")]
 pub mod macos;
 #[cfg(target_os = "windows")]

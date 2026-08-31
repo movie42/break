@@ -1,4 +1,5 @@
 mod commands;
+mod daemon;
 mod tray;
 
 use tauri::WindowEvent;
@@ -19,7 +20,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::load_rules,
-            commands::save_rules
+            commands::save_rules,
+            commands::daemon_status,
+            commands::install_daemon,
+            commands::uninstall_daemon
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

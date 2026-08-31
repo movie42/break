@@ -1,15 +1,21 @@
 import { useEffect, useState } from "react";
 
+import { DaemonPanel } from "@/features/daemon/DaemonPanel";
 import { ScheduleEditor } from "@/features/schedule/ScheduleEditor";
 import { SiteList } from "@/features/sites/SiteList";
 import { StatusPanel } from "@/features/status/StatusPanel";
-import { loadRules, saveRules } from "@/shared/api/rules";
+import {
+  installDaemon,
+  loadRules,
+  saveRules,
+  uninstallDaemon,
+} from "@/shared/api/rules";
 import type { AppState, Rules, TimeWindow } from "@/shared/types";
 import { Notice } from "@/shared/ui/Notice";
 
-const NOTICE_LINES = [
-  "아직 차단은 동작하지 않습니다.",
-  "지금은 사이트와 시간대를 저장하는 것까지만 가능합니다.",
+const NOT_INSTALLED_NOTICE = [
+  "차단을 시작하려면 백그라운드 프로그램을 설치해야 합니다.",
+  "설치할 때 Mac 관리자 암호를 한 번 물어봅니다.",
 ];
 
 const TABS = [
@@ -24,6 +30,8 @@ export default function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [tab, setTab] = useState<TabId>("status");
   const [error, setError] = useState<string | null>(null);
+  const [daemonPending, setDaemonPending] = useState(false);
+  const [daemonError, setDaemonError] = useState<string | null>(null);
 
   useEffect(() => {
     loadRules()
@@ -42,6 +50,18 @@ export default function App() {
       );
     } catch (cause: unknown) {
       setError(String(cause));
+    }
+  }
+
+  async function runDaemonAction(action: () => Promise<AppState>) {
+    setDaemonPending(true);
+    setDaemonError(null);
+    try {
+      setState(await action());
+    } catch (cause: unknown) {
+      setDaemonError(String(cause));
+    } finally {
+      setDaemonPending(false);
     }
   }
 
@@ -89,7 +109,9 @@ export default function App() {
     <main className="mx-auto flex h-full max-w-2xl flex-col gap-5 p-6">
       <header className="flex flex-col gap-4">
         <h1 className="text-xl font-semibold text-ink">Break</h1>
-        <Notice lines={NOTICE_LINES} />
+        {state?.daemon.kind === "notInstalled" && (
+          <Notice lines={NOT_INSTALLED_NOTICE} />
+        )}
         <nav className="flex gap-1 rounded-lg border border-line bg-surface-muted p-1">
           {TABS.map((item) => (
             <button
@@ -113,7 +135,18 @@ export default function App() {
         <p className="text-sm text-ink-muted">규칙을 읽는 중입니다.</p>
       ) : (
         <>
-          {tab === "status" && <StatusPanel state={state} />}
+          {tab === "status" && (
+            <>
+              <StatusPanel state={state} />
+              <DaemonPanel
+                status={state.daemon}
+                pending={daemonPending}
+                error={daemonError}
+                onInstall={() => void runDaemonAction(installDaemon)}
+                onUninstall={() => void runDaemonAction(uninstallDaemon)}
+              />
+            </>
+          )}
           {tab === "sites" && (
             <SiteList
               sites={state.rules.sites}
