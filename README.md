@@ -28,7 +28,7 @@ bun run build         # 프론트엔드 빌드
 cargo test --workspace
 ```
 
-Node는 `.nvmrc`의 v24.16.0, 패키지 매니저는 bun입니다.
+bun만 씁니다. 버전은 `.bun-version`에 고정돼 있고, Node는 필요 없습니다.
 
 ## 규칙 파일
 

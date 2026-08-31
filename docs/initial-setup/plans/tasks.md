@@ -34,7 +34,7 @@
 - [x] 앱 이름 설정 (`src/system/break-app/tauri.conf.json`) — `productName: "Break"`, `identifier: "com.movie42.break"`
   - `break`는 Rust 키워드라 cargo가 패키지명으로 거부한다. 크레이트에는 접미사를 붙인다
 - [x] Tailwind CSS 설치와 설정 (`tailwind.config.js`, `src/client/index.css`)
-- [x] Node 버전 고정 (`.nvmrc`) — 로컬 설치본은 v24.16.0
+- [x] 런타임 버전 고정 (`.bun-version`) — bun 1.4.0
 - [x] `.gitignore` 작성 — `node_modules/`, `dist/`, `target/`, `.DS_Store`
 - [x] ESLint + Prettier 설정 (`eslint.config.js`, `.prettierrc`), `package.json`에 `lint` 스크립트 추가
 - 검증: `pnpm tauri dev`로 빈 창이 뜬다. `pnpm lint`가 통과한다.
@@ -119,3 +119,4 @@
 - 결정: 포트 1420을 다른 프로젝트가 점유 중이라 검증할 때만 `-c`로 1431을 썼다. 저장소 설정은 Tauri 기본값 1420 그대로다
 - 블로커: 없음
 - 전체 구현 완료
+- 결정: Node를 쓰지 않는다. `.nvmrc`를 지우고 `.bun-version`으로 bun 1.4.0을 고정했다. PATH에서 node와 npm을 빼고 `bun run lint`·`bun run build`·`bun run tauri dev`가 전부 도는 것을 확인했다
