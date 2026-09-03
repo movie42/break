@@ -291,6 +291,7 @@ name = "break-app"
 version = "0.1.0"
 dependencies = [
  "break-core",
+ "break-enforcer",
  "serde",
  "serde_json",
  "tauri",
@@ -323,6 +324,7 @@ name = "break-enforcer"
 version = "0.1.0"
 dependencies = [
  "break-core",
+ "serde_json",
  "thiserror 2.0.20",
 ]
 

@@ -1,6 +1,6 @@
 use break_core::rules::{AppTarget, SiteTarget};
 
-use crate::{is_dry_run, log_dry_run_apps, log_dry_run_sites, Enforcer, Error};
+use crate::{is_dry_run, log_dry_run_apps, log_dry_run_guard, log_dry_run_sites, Enforcer, Error};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct WindowsEnforcer;
@@ -39,6 +39,38 @@ impl Enforcer for WindowsEnforcer {
     fn clear_apps(&self) -> Result<(), Error> {
         if is_dry_run() {
             log_dry_run_apps(&[]);
+            return Ok(());
+        }
+        Err(Error::NotPrivileged)
+    }
+
+    fn apply_dns_guard(&self) -> Result<(), Error> {
+        if is_dry_run() {
+            log_dry_run_guard(&[]);
+            return Ok(());
+        }
+        Err(Error::NotPrivileged)
+    }
+
+    fn clear_dns_guard(&self) -> Result<(), Error> {
+        if is_dry_run() {
+            log_dry_run_guard(&[]);
+            return Ok(());
+        }
+        Err(Error::NotPrivileged)
+    }
+
+    fn apply_browser_policy(&self, sites: &[SiteTarget]) -> Result<(), Error> {
+        if is_dry_run() {
+            log_dry_run_sites(sites);
+            return Ok(());
+        }
+        Err(Error::NotPrivileged)
+    }
+
+    fn clear_browser_policy(&self) -> Result<(), Error> {
+        if is_dry_run() {
+            log_dry_run_sites(&[]);
             return Ok(());
         }
         Err(Error::NotPrivileged)

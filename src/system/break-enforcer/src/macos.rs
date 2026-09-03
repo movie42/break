@@ -4,6 +4,8 @@ use std::process::Command;
 use break_core::rules::{AppTarget, SiteTarget};
 
 use crate::hosts::{self, HOSTS_PATH};
+use crate::pf;
+use crate::policy;
 use crate::{is_dry_run, log_dry_run_apps, log_dry_run_sites, Enforcer, Error};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -42,6 +44,10 @@ pub fn flush_dns_cache() {
         .status();
 }
 
+pub fn flush_preferences_cache() {
+    let _ = Command::new("killall").arg("cfprefsd").status();
+}
+
 impl Enforcer for MacosEnforcer {
     fn apply_sites(&self, sites: &[SiteTarget]) -> Result<(), Error> {
         self.write_sites(sites)
@@ -65,5 +71,27 @@ impl Enforcer for MacosEnforcer {
             return Ok(());
         }
         Err(Error::NotPrivileged)
+    }
+
+    fn apply_dns_guard(&self) -> Result<(), Error> {
+        pf::apply(&pf::resolvers::blockable(&pf::resolvers::system_nameservers()))
+    }
+
+    fn clear_dns_guard(&self) -> Result<(), Error> {
+        pf::clear()
+    }
+
+    fn apply_browser_policy(&self, sites: &[SiteTarget]) -> Result<(), Error> {
+        if policy::apply(sites)? {
+            flush_preferences_cache();
+        }
+        Ok(())
+    }
+
+    fn clear_browser_policy(&self) -> Result<(), Error> {
+        if policy::clear()? {
+            flush_preferences_cache();
+        }
+        Ok(())
     }
 }

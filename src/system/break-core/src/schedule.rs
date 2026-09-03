@@ -1,6 +1,6 @@
 use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
 
-use crate::rules::{Rules, TimeWindow, Weekday};
+use crate::rules::{Rules, SiteTarget, TimeWindow, Weekday};
 
 const MINUTES_PER_DAY: u16 = 24 * 60;
 
@@ -17,6 +17,9 @@ fn previous_day(day: Weekday) -> Weekday {
 }
 
 pub fn window_contains<Tz: TimeZone>(window: &TimeWindow, at: &DateTime<Tz>) -> bool {
+    if !window.enabled {
+        return false;
+    }
     if !window.start.is_valid() || !window.end.is_valid() {
         return false;
     }
@@ -49,4 +52,31 @@ pub fn is_blocking_at<Tz: TimeZone>(rules: &Rules, at: &DateTime<Tz>) -> bool {
 
 pub fn is_blocking_now(rules: &Rules) -> bool {
     is_blocking_at(rules, &Local::now())
+}
+
+pub fn blocked_sites_at<Tz: TimeZone>(rules: &Rules, at: &DateTime<Tz>) -> Vec<SiteTarget> {
+    let mut hosts: Vec<String> = Vec::new();
+
+    for window in rules.schedule.windows.iter() {
+        if !window_contains(window, at) {
+            continue;
+        }
+        for group_id in &window.group_ids {
+            let Some(group) = rules.group(group_id) else {
+                continue;
+            };
+            for site in &group.sites {
+                if !hosts.iter().any(|kept| kept == &site.host) {
+                    hosts.push(site.host.clone());
+                }
+            }
+        }
+    }
+
+    hosts.sort();
+    hosts.into_iter().map(|host| SiteTarget { host }).collect()
+}
+
+pub fn blocked_sites_now(rules: &Rules) -> Vec<SiteTarget> {
+    blocked_sites_at(rules, &Local::now())
 }
