@@ -1,5 +1,7 @@
+mod browsers;
 mod commands;
 mod daemon;
+mod dns_guard;
 mod tray;
 
 use tauri::WindowEvent;
@@ -23,7 +25,9 @@ pub fn run() {
             commands::save_rules,
             commands::daemon_status,
             commands::install_daemon,
-            commands::uninstall_daemon
+            commands::uninstall_daemon,
+            commands::running_browsers,
+            commands::quit_browsers
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

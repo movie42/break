@@ -77,6 +77,8 @@ fn uninstall_script(rules_path: &Path) -> String {
         format!("launchctl bootout system/{LABEL} 2>/dev/null || true"),
         format!("rm -f {}", sh_quote(PLIST_PATH)),
         format!("rm -f {}", sh_quote(&binary.to_string_lossy())),
+        format!("rm -f {}", sh_quote(break_enforcer::pf::TOKEN_PATH)),
+        format!("rm -f {}", sh_quote(break_enforcer::pf::STATUS_PATH)),
     ]
     .join(" && ")
 }

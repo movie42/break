@@ -1,6 +1,13 @@
 use break_core::rules::{AppTarget, SiteTarget};
 
+pub mod atomic;
 pub mod hosts;
+pub mod marker;
+
+#[cfg(target_os = "macos")]
+pub mod pf;
+#[cfg(target_os = "macos")]
+pub mod policy;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -15,6 +22,8 @@ pub enum Error {
     NotPrivileged,
     #[error("차단 적용에 실패했습니다: {0}")]
     Io(#[from] std::io::Error),
+    #[error("방화벽 설정에 실패했습니다 (pfctl {args}): {message}")]
+    Pfctl { args: String, message: String },
 }
 
 pub fn is_dry_run() -> bool {
@@ -26,11 +35,23 @@ pub trait Enforcer {
     fn clear_sites(&self) -> Result<(), Error>;
     fn apply_apps(&self, apps: &[AppTarget]) -> Result<(), Error>;
     fn clear_apps(&self) -> Result<(), Error>;
+    fn apply_dns_guard(&self) -> Result<(), Error>;
+    fn clear_dns_guard(&self) -> Result<(), Error>;
+    fn apply_browser_policy(&self, sites: &[SiteTarget]) -> Result<(), Error>;
+    fn clear_browser_policy(&self) -> Result<(), Error>;
 }
 
 pub fn log_dry_run_sites(sites: &[SiteTarget]) {
     let hosts: Vec<&str> = sites.iter().map(|site| site.host.as_str()).collect();
     println!("[break dry-run] sites: {}", hosts.join(", "));
+}
+
+pub fn log_dry_run_guard(nameservers: &[std::net::IpAddr]) {
+    let addresses: Vec<String> = nameservers
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
+    println!("[break dry-run] dns guard: {}", addresses.join(", "));
 }
 
 pub fn log_dry_run_apps(apps: &[AppTarget]) {
@@ -77,6 +98,18 @@ pub mod unsupported {
             Err(Error::NotPrivileged)
         }
         fn clear_apps(&self) -> Result<(), Error> {
+            Err(Error::NotPrivileged)
+        }
+        fn apply_dns_guard(&self) -> Result<(), Error> {
+            Err(Error::NotPrivileged)
+        }
+        fn clear_dns_guard(&self) -> Result<(), Error> {
+            Err(Error::NotPrivileged)
+        }
+        fn apply_browser_policy(&self, _sites: &[SiteTarget]) -> Result<(), Error> {
+            Err(Error::NotPrivileged)
+        }
+        fn clear_browser_policy(&self) -> Result<(), Error> {
             Err(Error::NotPrivileged)
         }
     }

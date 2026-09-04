@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-import type { AppState, DaemonStatus } from "../types/app-state";
+import type { AppState, DaemonStatus, QuitReport } from "../types/app-state";
 import type { Rules } from "../types/rules";
 
 export function loadRules(): Promise<AppState> {
@@ -21,4 +21,12 @@ export function installDaemon(): Promise<AppState> {
 
 export function uninstallDaemon(): Promise<AppState> {
   return invoke<AppState>("uninstall_daemon");
+}
+
+export function runningBrowsers(): Promise<string[]> {
+  return invoke<string[]>("running_browsers");
+}
+
+export function quitBrowsers(): Promise<QuitReport> {
+  return invoke<QuitReport>("quit_browsers");
 }

@@ -1,11 +1,15 @@
 interface EmptyStateProps {
-  message: string;
+  title: string;
+  hint?: string;
 }
 
-export function EmptyState({ message }: EmptyStateProps) {
+export function EmptyState({ title, hint }: EmptyStateProps) {
   return (
-    <p className="rounded-lg border border-dashed border-line px-4 py-8 text-center text-sm text-ink-muted">
-      {message}
-    </p>
+    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed border-line-strong px-5 py-10">
+      <p className="text-[13px] text-ink-muted">{title}</p>
+      {hint !== undefined && (
+        <p className="text-[11.5px] text-ink-faint">{hint}</p>
+      )}
+    </div>
   );
 }

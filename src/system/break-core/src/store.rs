@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 
-use crate::rules::Rules;
+use crate::rules::{Rules, RULES_VERSION};
 
 pub const APP_DIR_NAME: &str = "com.movie42.break";
 pub const RULES_FILE_NAME: &str = "rules.json";
@@ -16,6 +16,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("규칙을 JSON으로 변환하지 못했습니다: {0}")]
     Serialize(#[from] serde_json::Error),
+    #[error("규칙 파일이 이 프로그램보다 새 버전입니다 (파일 {found}, 아는 버전 {known}). 차단 프로그램을 다시 설치하세요")]
+    UnsupportedVersion { found: u32, known: u32 },
 }
 
 #[cfg(target_os = "macos")]
@@ -60,7 +62,14 @@ pub fn load_from(path: &Path) -> Result<Rules, StoreError> {
     };
 
     match serde_json::from_str::<Rules>(&raw) {
-        Ok(rules) => Ok(rules),
+        Ok(rules) if rules.version > RULES_VERSION => Err(StoreError::UnsupportedVersion {
+            found: rules.version,
+            known: RULES_VERSION,
+        }),
+        Ok(mut rules) => {
+            rules.migrate();
+            Ok(rules)
+        }
         Err(_) => {
             quarantine(path)?;
             Ok(Rules::default())

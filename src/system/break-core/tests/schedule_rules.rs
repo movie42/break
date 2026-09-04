@@ -1,5 +1,5 @@
-use break_core::rules::{Rules, Schedule, TimeOfDay, TimeWindow, Weekday};
-use break_core::schedule::{is_blocking_at, window_contains};
+use break_core::rules::{Rules, Schedule, SiteGroup, SiteTarget, TimeOfDay, TimeWindow, Weekday};
+use break_core::schedule::{blocked_sites_at, is_blocking_at, window_contains};
 use chrono::{Local, TimeZone};
 
 fn window(start: (u8, u8), end: (u8, u8), days: &[Weekday]) -> TimeWindow {
@@ -8,7 +8,42 @@ fn window(start: (u8, u8), end: (u8, u8), days: &[Weekday]) -> TimeWindow {
         start: TimeOfDay::new(start.0, start.1),
         end: TimeOfDay::new(end.0, end.1),
         days: days.to_vec(),
+        group_ids: Vec::new(),
+        enabled: true,
     }
+}
+
+fn window_for(
+    start: (u8, u8),
+    end: (u8, u8),
+    days: &[Weekday],
+    group_ids: &[&str],
+) -> TimeWindow {
+    TimeWindow {
+        group_ids: group_ids.iter().map(|id| (*id).to_string()).collect(),
+        ..window(start, end, days)
+    }
+}
+
+fn group(id: &str, hosts: &[&str]) -> SiteGroup {
+    SiteGroup {
+        id: id.to_string(),
+        name: id.to_string(),
+        sites: hosts
+            .iter()
+            .map(|host| SiteTarget {
+                host: (*host).to_string(),
+            })
+            .collect(),
+        apps: Vec::new(),
+    }
+}
+
+fn hosts(rules: &Rules, at: &chrono::DateTime<Local>) -> Vec<String> {
+    blocked_sites_at(rules, at)
+        .into_iter()
+        .map(|site| site.host)
+        .collect()
 }
 
 fn at(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> chrono::DateTime<Local> {
@@ -85,4 +120,115 @@ fn overlapping_windows_block_if_any_matches() {
 #[test]
 fn no_windows_means_no_blocking() {
     assert!(!is_blocking_at(&Rules::default(), &monday(12, 0)));
+}
+
+#[test]
+fn only_groups_linked_to_an_active_window_are_blocked() {
+    let rules = Rules {
+        groups: vec![
+            group("social", &["youtube.com"]),
+            group("shop", &["coupang.com"]),
+        ],
+        schedule: Schedule {
+            windows: vec![
+                window_for((9, 0), (12, 0), &[Weekday::Monday], &["social"]),
+                window_for((13, 0), (18, 0), &[Weekday::Monday], &["shop"]),
+            ],
+        },
+        ..Rules::default()
+    };
+
+    assert_eq!(hosts(&rules, &monday(10, 0)), vec!["youtube.com"]);
+    assert_eq!(hosts(&rules, &monday(14, 0)), vec!["coupang.com"]);
+    assert!(hosts(&rules, &monday(12, 30)).is_empty());
+}
+
+#[test]
+fn overlapping_windows_block_the_union_once() {
+    let rules = Rules {
+        groups: vec![
+            group("social", &["youtube.com", "x.com"]),
+            group("shop", &["coupang.com", "x.com"]),
+        ],
+        schedule: Schedule {
+            windows: vec![
+                window_for((9, 0), (12, 0), &[Weekday::Monday], &["social"]),
+                window_for((11, 0), (18, 0), &[Weekday::Monday], &["shop"]),
+            ],
+        },
+        ..Rules::default()
+    };
+
+    assert_eq!(
+        hosts(&rules, &monday(11, 30)),
+        vec!["coupang.com", "x.com", "youtube.com"]
+    );
+}
+
+#[test]
+fn a_window_linked_to_nothing_blocks_nothing() {
+    let rules = Rules {
+        groups: vec![group("social", &["youtube.com"])],
+        schedule: Schedule {
+            windows: vec![window((0, 0), (0, 0), &[Weekday::Monday])],
+        },
+        ..Rules::default()
+    };
+
+    assert!(is_blocking_at(&rules, &monday(12, 0)));
+    assert!(hosts(&rules, &monday(12, 0)).is_empty());
+}
+
+#[test]
+fn an_overnight_window_still_blocks_after_midnight() {
+    let rules = Rules {
+        groups: vec![group("social", &["youtube.com"])],
+        schedule: Schedule {
+            windows: vec![window_for((22, 0), (2, 0), &[Weekday::Monday], &["social"])],
+        },
+        ..Rules::default()
+    };
+
+    assert_eq!(hosts(&rules, &tuesday(1, 0)), vec!["youtube.com"]);
+    assert!(hosts(&rules, &tuesday(2, 0)).is_empty());
+}
+
+#[test]
+fn an_off_window_blocks_nothing() {
+    let mut off = window_for((0, 0), (0, 0), &[Weekday::Monday], &["social"]);
+    off.enabled = false;
+
+    let rules = Rules {
+        groups: vec![group("social", &["youtube.com"])],
+        schedule: Schedule {
+            windows: vec![off],
+        },
+        ..Rules::default()
+    };
+
+    assert!(!window_contains(&rules.schedule.windows[0], &monday(12, 0)));
+    assert!(!is_blocking_at(&rules, &monday(12, 0)));
+    assert!(hosts(&rules, &monday(12, 0)).is_empty());
+}
+
+#[test]
+fn a_file_without_enabled_reads_as_on() {
+    let json = r#"{
+        "version": 2,
+        "groups": [{ "id": "social", "name": "social", "sites": [{ "host": "youtube.com" }], "apps": [] }],
+        "schedule": {
+            "windows": [{
+                "id": "w",
+                "start": { "hour": 0, "minute": 0 },
+                "end": { "hour": 0, "minute": 0 },
+                "days": ["monday"],
+                "groupIds": ["social"]
+            }]
+        }
+    }"#;
+
+    let rules: Rules = serde_json::from_str(json).expect("규칙 파싱 실패");
+
+    assert!(rules.schedule.windows[0].enabled);
+    assert_eq!(hosts(&rules, &monday(12, 0)), vec!["youtube.com"]);
 }
