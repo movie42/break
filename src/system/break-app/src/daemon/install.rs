@@ -8,16 +8,22 @@ use super::paths::{
 use super::{plist, DaemonError};
 
 pub fn install(rules_path: &Path) -> Result<(), DaemonError> {
-    let source = source_binary().ok_or_else(|| {
-        DaemonError::BinaryNotFound(super::paths::BINARY_NAME.to_string())
-    })?;
+    let source = source_binary()
+        .ok_or_else(|| DaemonError::BinaryNotFound(super::paths::BINARY_NAME.to_string()))?;
 
     let staged_binary = stage_binary(&source)?;
     let staged_plist = stage_plist(rules_path)?;
-    let script = install_script(&staged_binary, &staged_plist);
+    let staged_list = match super::paths::source_adult_list() {
+        Some(list) => Some(stage_adult_list(&list)?),
+        None => None,
+    };
+    let script = install_script(&staged_binary, &staged_plist, staged_list.as_deref());
     let result = run_privileged(&script);
     let _ = fs::remove_file(&staged_binary);
     let _ = fs::remove_file(&staged_plist);
+    if let Some(list) = staged_list {
+        let _ = fs::remove_file(list);
+    }
     result
 }
 
@@ -38,12 +44,34 @@ fn stage_plist(rules_path: &Path) -> Result<PathBuf, DaemonError> {
     Ok(path)
 }
 
-fn install_script(source: &Path, staged_plist: &Path) -> String {
+fn stage_adult_list(source: &Path) -> Result<PathBuf, DaemonError> {
+    let path = std::env::temp_dir().join(super::paths::ADULT_LIST_NAME);
+    let _ = fs::remove_file(&path);
+    fs::copy(source, &path)?;
+    Ok(path)
+}
+
+fn copy_adult_list(staged: &Path) -> String {
+    let target = Path::new(INSTALL_DIR).join(super::paths::ADULT_LIST_NAME);
+    [
+        format!(
+            "cp {} {}",
+            sh_quote(&staged.to_string_lossy()),
+            sh_quote(&target.to_string_lossy())
+        ),
+        format!("chmod 644 {}", sh_quote(&target.to_string_lossy())),
+    ]
+    .join(" && ")
+}
+
+fn install_script(source: &Path, staged_plist: &Path, staged_list: Option<&Path>) -> String {
     let binary = installed_binary();
+    let list_steps = staged_list.map(copy_adult_list);
     [
         "cd /".to_string(),
         format!("mkdir -p {}", sh_quote(INSTALL_DIR)),
         format!("mkdir -p {}", sh_quote(LOG_DIR)),
+        list_steps.unwrap_or_else(|| "true".to_string()),
         format!(
             "cp {} {}",
             sh_quote(&source.to_string_lossy()),
@@ -65,6 +93,21 @@ fn install_script(source: &Path, staged_plist: &Path) -> String {
     .join(" && ")
 }
 
+fn return_rules_script(user_rules: &Path) -> String {
+    let system = sh_quote(break_core::store::SYSTEM_RULES_PATH);
+    let user = sh_quote(&user_rules.to_string_lossy());
+    let dir = sh_quote(
+        &user_rules
+            .parent()
+            .map(|parent| parent.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    );
+    let owner = sh_quote(&std::env::var("USER").unwrap_or_default());
+    format!(
+        "if [ -f {system} ]; then mkdir -p {dir} && cp {system} {user} && chown {owner} {user} && rm -f {system}; fi"
+    )
+}
+
 fn uninstall_script(rules_path: &Path) -> String {
     let binary = installed_binary();
     [
@@ -75,8 +118,11 @@ fn uninstall_script(rules_path: &Path) -> String {
             sh_quote(&rules_path.to_string_lossy())
         ),
         format!("launchctl bootout system/{LABEL} 2>/dev/null || true"),
+        return_rules_script(rules_path),
         format!("rm -f {}", sh_quote(PLIST_PATH)),
         format!("rm -f {}", sh_quote(&binary.to_string_lossy())),
+        format!("rm -f {}", sh_quote(break_enforcer::pf::TOKEN_PATH)),
+        format!("rm -f {}", sh_quote(break_enforcer::pf::STATUS_PATH)),
     ]
     .join(" && ")
 }
@@ -87,7 +133,9 @@ fn run_privileged(script: &str) -> Result<(), DaemonError> {
         escape_applescript(script)
     );
 
-    let output = Command::new("osascript").args(["-e", &applescript]).output()?;
+    let output = Command::new("osascript")
+        .args(["-e", &applescript])
+        .output()?;
     if output.status.success() {
         return Ok(());
     }
@@ -117,18 +165,28 @@ mod tests {
 
     #[test]
     fn a_path_with_spaces_stays_one_argument() {
-        assert_eq!(sh_quote("/Users/한 사람/rules.json"), "'/Users/한 사람/rules.json'");
+        assert_eq!(
+            sh_quote("/Users/한 사람/rules.json"),
+            "'/Users/한 사람/rules.json'"
+        );
     }
 
     #[test]
     fn a_single_quote_in_a_path_is_escaped() {
-        assert_eq!(sh_quote("/Users/o'brien/r.json"), "'/Users/o'\\''brien/r.json'");
+        assert_eq!(
+            sh_quote("/Users/o'brien/r.json"),
+            "'/Users/o'\\''brien/r.json'"
+        );
     }
 
     #[test]
     fn both_scripts_leave_the_protected_home_directory_first() {
-        assert!(install_script(Path::new("/tmp/break-daemon"), Path::new("/tmp/x.plist"))
-            .starts_with("cd / &&"));
+        assert!(install_script(
+            Path::new("/tmp/break-daemon"),
+            Path::new("/tmp/x.plist"),
+            Some(Path::new("/tmp/adult-hosts.txt"))
+        )
+        .starts_with("cd / &&"));
         assert!(uninstall_script(Path::new("/tmp/rules.json")).starts_with("cd / &&"));
     }
 
@@ -148,7 +206,22 @@ mod tests {
 
     #[test]
     fn a_cancelled_password_prompt_is_not_a_failure() {
-        assert!(is_cancelled("execution error: 사용자가 취소했습니다. (-128)"));
+        assert!(is_cancelled(
+            "execution error: 사용자가 취소했습니다. (-128)"
+        ));
         assert!(!is_cancelled("execution error: something else (1)"));
+    }
+
+    #[test]
+    fn the_adult_list_is_copied_from_the_staging_folder_after_leaving_home() {
+        let script = install_script(
+            Path::new("/tmp/break-daemon"),
+            Path::new("/tmp/x.plist"),
+            Some(Path::new("/tmp/adult-hosts.txt")),
+        );
+        let leave = script.find("cd /").expect("cd step");
+        let copy = script.find("'/tmp/adult-hosts.txt'").expect("list copy");
+        assert!(leave < copy);
+        assert!(!script.contains("Documents"));
     }
 }

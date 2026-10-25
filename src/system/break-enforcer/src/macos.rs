@@ -4,6 +4,8 @@ use std::process::Command;
 use break_core::rules::{AppTarget, SiteTarget};
 
 use crate::hosts::{self, HOSTS_PATH};
+use crate::pf;
+use crate::policy;
 use crate::{is_dry_run, log_dry_run_apps, log_dry_run_sites, Enforcer, Error};
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -14,17 +16,18 @@ impl MacosEnforcer {
         Self
     }
 
-    fn write_sites(&self, sites: &[SiteTarget]) -> Result<(), Error> {
+    fn write_sites(&self, sites: &[SiteTarget], compact: &[SiteTarget]) -> Result<bool, Error> {
         if is_dry_run() {
             log_dry_run_sites(sites);
-            return Ok(());
+            return Ok(false);
         }
 
-        let changed = hosts::read_and_write(Path::new(HOSTS_PATH), sites).map_err(to_error)?;
+        let changed =
+            hosts::read_and_write_with(Path::new(HOSTS_PATH), sites, compact).map_err(to_error)?;
         if changed {
             flush_dns_cache();
         }
-        Ok(())
+        Ok(changed)
     }
 }
 
@@ -42,13 +45,17 @@ pub fn flush_dns_cache() {
         .status();
 }
 
+pub fn flush_preferences_cache() {
+    let _ = Command::new("killall").arg("cfprefsd").status();
+}
+
 impl Enforcer for MacosEnforcer {
-    fn apply_sites(&self, sites: &[SiteTarget]) -> Result<(), Error> {
-        self.write_sites(sites)
+    fn apply_sites(&self, sites: &[SiteTarget], compact: &[SiteTarget]) -> Result<bool, Error> {
+        self.write_sites(sites, compact)
     }
 
     fn clear_sites(&self) -> Result<(), Error> {
-        self.write_sites(&[])
+        self.write_sites(&[], &[]).map(|_| ())
     }
 
     fn apply_apps(&self, apps: &[AppTarget]) -> Result<(), Error> {
@@ -65,5 +72,29 @@ impl Enforcer for MacosEnforcer {
             return Ok(());
         }
         Err(Error::NotPrivileged)
+    }
+
+    fn apply_dns_guard(&self) -> Result<(), Error> {
+        pf::apply(&pf::resolvers::blockable(
+            &pf::resolvers::system_nameservers(),
+        ))
+    }
+
+    fn clear_dns_guard(&self) -> Result<(), Error> {
+        pf::clear()
+    }
+
+    fn apply_browser_policy(&self, sites: &[SiteTarget]) -> Result<(), Error> {
+        if policy::apply(sites)? {
+            flush_preferences_cache();
+        }
+        Ok(())
+    }
+
+    fn clear_browser_policy(&self) -> Result<(), Error> {
+        if policy::clear()? {
+            flush_preferences_cache();
+        }
+        Ok(())
     }
 }

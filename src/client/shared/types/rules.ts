@@ -1,4 +1,4 @@
-export const RULES_VERSION = 1;
+export const RULES_VERSION = 4;
 
 export type Weekday =
   | "monday"
@@ -29,6 +29,15 @@ export const WEEKDAY_LABELS: Record<Weekday, string> = {
   sunday: "일",
 };
 
+export const WEEKDAY_PRESETS: readonly { label: string; days: Weekday[] }[] = [
+  {
+    label: "평일",
+    days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+  },
+  { label: "주말", days: ["saturday", "sunday"] },
+  { label: "매일", days: [...WEEKDAYS] },
+];
+
 export interface TimeOfDay {
   hour: number;
   minute: number;
@@ -39,6 +48,8 @@ export interface TimeWindow {
   start: TimeOfDay;
   end: TimeOfDay;
   days: Weekday[];
+  groupIds: string[];
+  enabled: boolean;
 }
 
 export interface SiteTarget {
@@ -50,20 +61,59 @@ export interface AppTarget {
   displayName: string;
 }
 
+export interface SiteGroup {
+  id: string;
+  name: string;
+  sites: SiteTarget[];
+  apps: AppTarget[];
+  preset?: string | null;
+}
+
 export interface Schedule {
   windows: TimeWindow[];
 }
 
+export interface InstantBlock {
+  endsAt: string;
+  groupIds: string[];
+}
+
+export interface AdultFilter {
+  enabled: boolean;
+  consentedAt: string | null;
+  disableRequestedAt: string | null;
+}
+
+export interface AlertRecipient {
+  email: string;
+  addedAt: string;
+  removalRequestedAt: string | null;
+}
+
+export interface Alerts {
+  recipients: AlertRecipient[];
+}
+
+export interface Lock {
+  passwordHash: string | null;
+}
+
 export interface Rules {
   version: number;
-  sites: SiteTarget[];
-  apps: AppTarget[];
+  groups: SiteGroup[];
   schedule: Schedule;
+  instant: InstantBlock | null;
+  adultFilter: AdultFilter;
+  alerts: Alerts;
+  lock: Lock;
 }
 
 export const EMPTY_RULES: Rules = {
   version: RULES_VERSION,
-  sites: [],
-  apps: [],
+  groups: [],
   schedule: { windows: [] },
+  instant: null,
+  adultFilter: { enabled: false, consentedAt: null, disableRequestedAt: null },
+  alerts: { recipients: [] },
+  lock: { passwordHash: null },
 };

@@ -22,3 +22,20 @@ pub fn source_binary() -> Option<PathBuf> {
 
     candidates.into_iter().find(|path| path.is_file())
 }
+
+pub const ADULT_LIST_NAME: &str = "adult-hosts.txt";
+
+pub fn source_adult_list() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+
+    let candidates = [
+        dir.join(ADULT_LIST_NAME),
+        dir.join("../Resources").join(ADULT_LIST_NAME),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(ADULT_LIST_NAME),
+    ];
+
+    candidates.into_iter().find(|path| path.is_file())
+}

@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 
-use crate::rules::Rules;
+use crate::rules::{Rules, RULES_VERSION};
 
 pub const APP_DIR_NAME: &str = "com.movie42.break";
 pub const RULES_FILE_NAME: &str = "rules.json";
+pub const SYSTEM_RULES_PATH: &str = "/Library/Application Support/Break/rules.json";
+pub const SYSTEM_RULES_MODE: u32 = 0o644;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -16,6 +18,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("규칙을 JSON으로 변환하지 못했습니다: {0}")]
     Serialize(#[from] serde_json::Error),
+    #[error("규칙 파일이 이 프로그램보다 새 버전입니다 (파일 {found}, 아는 버전 {known}). 차단 프로그램을 다시 설치하세요")]
+    UnsupportedVersion { found: u32, known: u32 },
 }
 
 #[cfg(target_os = "macos")]
@@ -60,7 +64,14 @@ pub fn load_from(path: &Path) -> Result<Rules, StoreError> {
     };
 
     match serde_json::from_str::<Rules>(&raw) {
-        Ok(rules) => Ok(rules),
+        Ok(rules) if rules.version > RULES_VERSION => Err(StoreError::UnsupportedVersion {
+            found: rules.version,
+            known: RULES_VERSION,
+        }),
+        Ok(mut rules) => {
+            rules.migrate();
+            Ok(rules)
+        }
         Err(_) => {
             quarantine(path)?;
             Ok(Rules::default())
@@ -74,6 +85,27 @@ pub fn save_to(path: &Path, rules: &Rules) -> Result<(), StoreError> {
     }
     let json = serde_json::to_string_pretty(rules)?;
     fs::write(path, json)?;
+    Ok(())
+}
+
+pub fn save_atomic(path: &Path, rules: &Rules, mode: u32) -> Result<(), StoreError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_string_pretty(rules)?;
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| RULES_FILE_NAME.to_string());
+    let temp = path.with_file_name(format!(".{name}.tmp"));
+    fs::write(&temp, json)?;
+    fs::set_permissions(&temp, fs::Permissions::from_mode(mode))?;
+    if let Err(err) = fs::rename(&temp, path) {
+        let _ = fs::remove_file(&temp);
+        return Err(StoreError::Io(err));
+    }
     Ok(())
 }
 

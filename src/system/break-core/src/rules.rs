@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -54,6 +55,14 @@ pub struct TimeWindow {
     pub start: TimeOfDay,
     pub end: TimeOfDay,
     pub days: Vec<Weekday>,
+    #[serde(default)]
+    pub group_ids: Vec<String>,
+    #[serde(default = "enabled_by_default")]
+    pub enabled: bool,
+}
+
+fn enabled_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +78,44 @@ pub struct AppTarget {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub sites: Vec<SiteTarget>,
+    #[serde(default)]
+    pub apps: Vec<AppTarget>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
+}
+
+impl SiteGroup {
+    pub fn new(id: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            sites: Vec::new(),
+            apps: Vec::new(),
+            preset: None,
+        }
+    }
+
+    pub fn add_site(&mut self, input: &str) -> Option<&SiteTarget> {
+        let target = SiteTarget::from_input(input)?;
+        if self.sites.iter().any(|site| site.host == target.host) {
+            return None;
+        }
+        self.sites.push(target);
+        self.sites.last()
+    }
+
+    pub fn remove_site(&mut self, host: &str) {
+        self.sites.retain(|site| site.host != host);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Schedule {
@@ -78,25 +125,85 @@ pub struct Schedule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct InstantBlock {
+    pub ends_at: DateTime<Utc>,
+    #[serde(default)]
+    pub group_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdultFilter {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub consented_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub disable_requested_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlertRecipient {
+    pub email: String,
+    pub added_at: DateTime<Utc>,
+    #[serde(default)]
+    pub removal_requested_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Alerts {
+    #[serde(default)]
+    pub recipients: Vec<AlertRecipient>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Lock {
+    #[serde(default)]
+    pub password_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Rules {
     pub version: u32,
     #[serde(default)]
-    pub sites: Vec<SiteTarget>,
-    #[serde(default)]
-    pub apps: Vec<AppTarget>,
+    pub groups: Vec<SiteGroup>,
     #[serde(default)]
     pub schedule: Schedule,
+    #[serde(default)]
+    pub instant: Option<InstantBlock>,
+    #[serde(default)]
+    pub adult_filter: AdultFilter,
+    #[serde(default)]
+    pub alerts: Alerts,
+    #[serde(default)]
+    pub lock: Lock,
+    #[serde(rename = "sites", default, skip_serializing_if = "Vec::is_empty")]
+    pub legacy_sites: Vec<SiteTarget>,
+    #[serde(rename = "apps", default, skip_serializing_if = "Vec::is_empty")]
+    pub legacy_apps: Vec<AppTarget>,
 }
 
-pub const RULES_VERSION: u32 = 1;
+pub const RULES_VERSION: u32 = 4;
+const GROUPED_VERSION: u32 = 2;
+pub const MIGRATED_GROUP_ID: &str = "default";
+pub const MIGRATED_GROUP_NAME: &str = "차단 목록";
 
 impl Default for Rules {
     fn default() -> Self {
         Self {
             version: RULES_VERSION,
-            sites: Vec::new(),
-            apps: Vec::new(),
+            groups: Vec::new(),
             schedule: Schedule::default(),
+            instant: None,
+            adult_filter: AdultFilter::default(),
+            alerts: Alerts::default(),
+            lock: Lock::default(),
+            legacy_sites: Vec::new(),
+            legacy_apps: Vec::new(),
         }
     }
 }
@@ -142,16 +249,82 @@ impl SiteTarget {
 }
 
 impl Rules {
-    pub fn add_site(&mut self, input: &str) -> Option<&SiteTarget> {
-        let target = SiteTarget::from_input(input)?;
-        if self.sites.iter().any(|site| site.host == target.host) {
-            return None;
-        }
-        self.sites.push(target);
-        self.sites.last()
+    pub fn group(&self, id: &str) -> Option<&SiteGroup> {
+        self.groups.iter().find(|group| group.id == id)
     }
 
-    pub fn remove_site(&mut self, host: &str) {
-        self.sites.retain(|site| site.host != host);
+    pub fn group_mut(&mut self, id: &str) -> Option<&mut SiteGroup> {
+        self.groups.iter_mut().find(|group| group.id == id)
+    }
+    pub fn migrate(&mut self) {
+        let sites = std::mem::take(&mut self.legacy_sites);
+        let apps = std::mem::take(&mut self.legacy_apps);
+        let carried = !sites.is_empty() || !apps.is_empty();
+
+        if carried {
+            match self.group_mut(MIGRATED_GROUP_ID) {
+                Some(group) => {
+                    for site in sites {
+                        if !group.sites.iter().any(|kept| kept.host == site.host) {
+                            group.sites.push(site);
+                        }
+                    }
+                    for app in apps {
+                        if !group
+                            .apps
+                            .iter()
+                            .any(|kept| kept.bundle_id == app.bundle_id)
+                        {
+                            group.apps.push(app);
+                        }
+                    }
+                }
+                None => {
+                    self.groups.insert(
+                        0,
+                        SiteGroup {
+                            id: MIGRATED_GROUP_ID.to_string(),
+                            name: MIGRATED_GROUP_NAME.to_string(),
+                            sites,
+                            apps,
+                            preset: None,
+                        },
+                    );
+                }
+            }
+        }
+
+        if self.version < GROUPED_VERSION && self.group(MIGRATED_GROUP_ID).is_some() {
+            for window in &mut self.schedule.windows {
+                if window.group_ids.is_empty() {
+                    window.group_ids.push(MIGRATED_GROUP_ID.to_string());
+                }
+            }
+        }
+
+        self.version = RULES_VERSION;
+    }
+    pub fn prune_group_links(&mut self) {
+        let known: Vec<String> = self.groups.iter().map(|group| group.id.clone()).collect();
+        for window in &mut self.schedule.windows {
+            window
+                .group_ids
+                .retain(|id| known.iter().any(|kept| kept == id));
+        }
+        if let Some(instant) = &mut self.instant {
+            instant
+                .group_ids
+                .retain(|id| known.iter().any(|kept| kept == id));
+        }
+    }
+
+    pub fn drop_expired_instant(&mut self, now: DateTime<Utc>) {
+        if self
+            .instant
+            .as_ref()
+            .is_some_and(|instant| instant.ends_at <= now)
+        {
+            self.instant = None;
+        }
     }
 }

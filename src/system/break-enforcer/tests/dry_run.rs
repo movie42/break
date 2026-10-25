@@ -10,7 +10,7 @@ fn dry_run_skips_enforcement_and_succeeds() {
     let sites = vec![SiteTarget {
         host: "youtube.com".to_string(),
     }];
-    assert!(enforcer.apply_sites(&sites).is_ok());
+    assert!(enforcer.apply_sites(&sites, &[]).is_ok());
     assert!(enforcer.clear_sites().is_ok());
 
     unsafe { std::env::remove_var(DRY_RUN_ENV) };
