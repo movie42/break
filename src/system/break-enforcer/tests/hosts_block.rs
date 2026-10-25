@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 use break_core::rules::SiteTarget;
 use break_enforcer::hosts::{
-    apply_to_content, read_and_write, render_block, strip_block, BEGIN_MARKER, END_MARKER,
+    apply_to_content, read_and_write, render_block, render_block_with, strip_block, BEGIN_MARKER,
+    END_MARKER,
 };
 
 fn sites(hosts: &[&str]) -> Vec<SiteTarget> {
@@ -124,4 +125,13 @@ fn writing_keeps_the_original_file_permissions() {
 
     let mode = fs::metadata(&path).expect("metadata").permissions().mode();
     assert_eq!(mode & 0o777, 0o644);
+}
+
+#[test]
+fn a_compact_list_writes_one_line_per_host() {
+    let block = render_block_with(&sites(&["youtube.com"]), &sites(&["adult.example"]));
+    assert!(block.contains("0.0.0.0\tadult.example\n"));
+    assert!(!block.contains("www.adult.example"));
+    assert!(!block.contains("::1\tadult.example"));
+    assert!(block.contains("127.0.0.1\twww.youtube.com"));
 }

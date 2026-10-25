@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Local, TimeZone, Timelike};
+use chrono::{DateTime, Datelike, Local, TimeZone, Timelike, Utc};
 
 use crate::rules::{Rules, SiteTarget, TimeWindow, Weekday};
 
@@ -42,12 +42,20 @@ pub fn window_contains<Tz: TimeZone>(window: &TimeWindow, at: &DateTime<Tz>) -> 
     started_today || started_yesterday
 }
 
-pub fn is_blocking_at<Tz: TimeZone>(rules: &Rules, at: &DateTime<Tz>) -> bool {
+pub fn instant_active<Tz: TimeZone>(rules: &Rules, at: &DateTime<Tz>) -> bool {
     rules
-        .schedule
-        .windows
-        .iter()
-        .any(|window| window_contains(window, at))
+        .instant
+        .as_ref()
+        .is_some_and(|instant| at.with_timezone(&Utc) < instant.ends_at)
+}
+
+pub fn is_blocking_at<Tz: TimeZone>(rules: &Rules, at: &DateTime<Tz>) -> bool {
+    instant_active(rules, at)
+        || rules
+            .schedule
+            .windows
+            .iter()
+            .any(|window| window_contains(window, at))
 }
 
 pub fn is_blocking_now(rules: &Rules) -> bool {
@@ -55,20 +63,26 @@ pub fn is_blocking_now(rules: &Rules) -> bool {
 }
 
 pub fn blocked_sites_at<Tz: TimeZone>(rules: &Rules, at: &DateTime<Tz>) -> Vec<SiteTarget> {
-    let mut hosts: Vec<String> = Vec::new();
-
+    let mut active_groups: Vec<&String> = Vec::new();
     for window in rules.schedule.windows.iter() {
-        if !window_contains(window, at) {
-            continue;
+        if window_contains(window, at) {
+            active_groups.extend(window.group_ids.iter());
         }
-        for group_id in &window.group_ids {
-            let Some(group) = rules.group(group_id) else {
-                continue;
-            };
-            for site in &group.sites {
-                if !hosts.iter().any(|kept| kept == &site.host) {
-                    hosts.push(site.host.clone());
-                }
+    }
+    if instant_active(rules, at) {
+        if let Some(instant) = &rules.instant {
+            active_groups.extend(instant.group_ids.iter());
+        }
+    }
+
+    let mut hosts: Vec<String> = Vec::new();
+    for group_id in active_groups {
+        let Some(group) = rules.group(group_id) else {
+            continue;
+        };
+        for site in &group.sites {
+            if !hosts.iter().any(|kept| kept == &site.host) {
+                hosts.push(site.host.clone());
             }
         }
     }

@@ -192,10 +192,7 @@ mod tests {
     #[test]
     fn a_main_executable_resolves_to_its_own_bundle() {
         let path = PathBuf::from("/Applications/Aside.app/Contents/MacOS/Aside");
-        assert_eq!(
-            bundle_of(&path),
-            Some(Path::new("/Applications/Aside.app"))
-        );
+        assert_eq!(bundle_of(&path), Some(Path::new("/Applications/Aside.app")));
         assert_eq!(
             bundle_name(bundle_of(&path).expect("bundle")),
             Some("Aside".to_string())

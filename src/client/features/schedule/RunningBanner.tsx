@@ -1,14 +1,21 @@
+import { useNow } from "@/shared/hooks/useNow";
 import { LockIcon } from "@/shared/ui/icons";
 
 import type { BlockingSession } from "./active";
-import { formatReleaseAt, formatRemaining } from "./active";
+import { formatCountdown, formatReleaseAt } from "./active";
+
+const COUNTDOWN_MS = 1000;
 
 interface RunningBannerProps {
   session: BlockingSession;
-  now: Date;
+  onExtend: () => void;
 }
 
-export function RunningBanner({ session, now }: RunningBannerProps) {
+export function RunningBanner({ session, onExtend }: RunningBannerProps) {
+  const now = useNow(COUNTDOWN_MS);
+  const running =
+    session.windowIds.length + (session.instantEndsAt !== null ? 1 : 0);
+
   const release =
     session.endsAt === null
       ? {
@@ -17,7 +24,7 @@ export function RunningBanner({ session, now }: RunningBannerProps) {
         }
       : {
           headline: `${formatReleaseAt(now, session.endsAt)}에 풀립니다`,
-          detail: `남은 시간 ${formatRemaining(now, session.endsAt)}`,
+          detail: `남은 시간 ${formatCountdown(now, session.endsAt)}`,
         };
 
   return (
@@ -30,14 +37,25 @@ export function RunningBanner({ session, now }: RunningBannerProps) {
           <span className="text-[13px] font-bold text-ink">
             지금 차단 중 — {release.headline}
           </span>
-          <span className="text-[11.5px] text-ink-muted">
+          <span className="text-[11.5px] text-ink-muted tabular-nums">
             {release.detail} · 실행 중인 시간대는 끄거나 지울 수 없습니다
           </span>
         </div>
       </div>
-      <span className="shrink-0 text-[11px] font-semibold tracking-[0.12em] text-accent uppercase">
-        {session.windowIds.length}개 실행
-      </span>
+      <div className="flex shrink-0 items-center gap-3">
+        <span className="text-[11px] font-semibold tracking-[0.12em] text-accent uppercase">
+          {running}개 실행
+        </span>
+        {session.endsAt !== null && (
+          <button
+            type="button"
+            onClick={onExtend}
+            className="h-7 rounded-lg border border-accent-line bg-surface px-3 text-xs font-semibold text-accent transition-colors hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            연장
+          </button>
+        )}
+      </div>
     </section>
   );
 }

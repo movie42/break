@@ -11,3 +11,5 @@ serde_json.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
 directories.workspace = true
+sha2 = "0.10"
+getrandom = "0.2"

@@ -1,4 +1,4 @@
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 4;
 
 export type Weekday =
   | "monday"
@@ -66,20 +66,54 @@ export interface SiteGroup {
   name: string;
   sites: SiteTarget[];
   apps: AppTarget[];
+  preset?: string | null;
 }
 
 export interface Schedule {
   windows: TimeWindow[];
 }
 
+export interface InstantBlock {
+  endsAt: string;
+  groupIds: string[];
+}
+
+export interface AdultFilter {
+  enabled: boolean;
+  consentedAt: string | null;
+  disableRequestedAt: string | null;
+}
+
+export interface AlertRecipient {
+  email: string;
+  addedAt: string;
+  removalRequestedAt: string | null;
+}
+
+export interface Alerts {
+  recipients: AlertRecipient[];
+}
+
+export interface Lock {
+  passwordHash: string | null;
+}
+
 export interface Rules {
   version: number;
   groups: SiteGroup[];
   schedule: Schedule;
+  instant: InstantBlock | null;
+  adultFilter: AdultFilter;
+  alerts: Alerts;
+  lock: Lock;
 }
 
 export const EMPTY_RULES: Rules = {
   version: RULES_VERSION,
   groups: [],
   schedule: { windows: [] },
+  instant: null,
+  adultFilter: { enabled: false, consentedAt: null, disableRequestedAt: null },
+  alerts: { recipients: [] },
+  lock: { passwordHash: null },
 };

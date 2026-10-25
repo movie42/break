@@ -1,4 +1,6 @@
-use break_core::rules::{Rules, Schedule, SiteGroup, SiteTarget, TimeOfDay, TimeWindow, Weekday};
+use break_core::rules::{
+    InstantBlock, Rules, Schedule, SiteGroup, SiteTarget, TimeOfDay, TimeWindow, Weekday,
+};
 use break_core::schedule::{blocked_sites_at, is_blocking_at, window_contains};
 use chrono::{Local, TimeZone};
 
@@ -13,12 +15,7 @@ fn window(start: (u8, u8), end: (u8, u8), days: &[Weekday]) -> TimeWindow {
     }
 }
 
-fn window_for(
-    start: (u8, u8),
-    end: (u8, u8),
-    days: &[Weekday],
-    group_ids: &[&str],
-) -> TimeWindow {
+fn window_for(start: (u8, u8), end: (u8, u8), days: &[Weekday], group_ids: &[&str]) -> TimeWindow {
     TimeWindow {
         group_ids: group_ids.iter().map(|id| (*id).to_string()).collect(),
         ..window(start, end, days)
@@ -36,6 +33,7 @@ fn group(id: &str, hosts: &[&str]) -> SiteGroup {
             })
             .collect(),
         apps: Vec::new(),
+        preset: None,
     }
 }
 
@@ -200,9 +198,7 @@ fn an_off_window_blocks_nothing() {
 
     let rules = Rules {
         groups: vec![group("social", &["youtube.com"])],
-        schedule: Schedule {
-            windows: vec![off],
-        },
+        schedule: Schedule { windows: vec![off] },
         ..Rules::default()
     };
 
@@ -231,4 +227,70 @@ fn a_file_without_enabled_reads_as_on() {
 
     assert!(rules.schedule.windows[0].enabled);
     assert_eq!(hosts(&rules, &monday(12, 0)), vec!["youtube.com"]);
+}
+
+fn instant_for(ends_at: chrono::DateTime<Local>, groups: &[&str]) -> InstantBlock {
+    InstantBlock {
+        ends_at: ends_at.with_timezone(&chrono::Utc),
+        group_ids: groups.iter().map(|id| (*id).to_string()).collect(),
+    }
+}
+
+#[test]
+fn an_instant_block_blocks_its_groups_until_it_ends() {
+    let rules = Rules {
+        groups: vec![group("social", &["youtube.com"])],
+        instant: Some(instant_for(monday(17, 20), &["social"])),
+        ..Rules::default()
+    };
+
+    assert!(is_blocking_at(&rules, &monday(17, 19)));
+    assert_eq!(hosts(&rules, &monday(17, 19)), vec!["youtube.com"]);
+    assert!(!is_blocking_at(&rules, &monday(17, 20)));
+    assert!(hosts(&rules, &monday(17, 20)).is_empty());
+}
+
+#[test]
+fn an_instant_block_past_midnight_does_not_come_back_next_week() {
+    let rules = Rules {
+        groups: vec![group("social", &["youtube.com"])],
+        instant: Some(instant_for(tuesday(1, 0), &["social"])),
+        ..Rules::default()
+    };
+
+    assert!(is_blocking_at(&rules, &tuesday(0, 30)));
+    assert!(!is_blocking_at(
+        &rules,
+        &(monday(23, 30) + chrono::Duration::days(7))
+    ));
+}
+
+#[test]
+fn an_instant_block_and_a_window_block_the_union() {
+    let rules = Rules {
+        groups: vec![
+            group("social", &["youtube.com"]),
+            group("shop", &["coupang.com"]),
+        ],
+        schedule: Schedule {
+            windows: vec![window_for((9, 0), (12, 0), &[Weekday::Monday], &["shop"])],
+        },
+        instant: Some(instant_for(monday(11, 0), &["social"])),
+        ..Rules::default()
+    };
+
+    assert_eq!(
+        hosts(&rules, &monday(10, 0)),
+        vec!["coupang.com", "youtube.com"]
+    );
+}
+
+#[test]
+fn an_expired_instant_block_is_dropped() {
+    let mut rules = Rules {
+        instant: Some(instant_for(monday(9, 0), &[])),
+        ..Rules::default()
+    };
+    rules.drop_expired_instant(monday(9, 0).with_timezone(&chrono::Utc));
+    assert!(rules.instant.is_none());
 }

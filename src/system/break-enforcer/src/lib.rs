@@ -31,7 +31,7 @@ pub fn is_dry_run() -> bool {
 }
 
 pub trait Enforcer {
-    fn apply_sites(&self, sites: &[SiteTarget]) -> Result<(), Error>;
+    fn apply_sites(&self, sites: &[SiteTarget], compact: &[SiteTarget]) -> Result<bool, Error>;
     fn clear_sites(&self) -> Result<(), Error>;
     fn apply_apps(&self, apps: &[AppTarget]) -> Result<(), Error>;
     fn clear_apps(&self) -> Result<(), Error>;
@@ -88,7 +88,11 @@ pub mod unsupported {
     }
 
     impl Enforcer for UnsupportedEnforcer {
-        fn apply_sites(&self, _sites: &[SiteTarget]) -> Result<(), Error> {
+        fn apply_sites(
+            &self,
+            _sites: &[SiteTarget],
+            _compact: &[SiteTarget],
+        ) -> Result<bool, Error> {
             Err(Error::NotPrivileged)
         }
         fn clear_sites(&self) -> Result<(), Error> {

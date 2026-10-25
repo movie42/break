@@ -1,5 +1,10 @@
 export type {
+  AdultFilter,
+  AlertRecipient,
+  Alerts,
   AppTarget,
+  InstantBlock,
+  Lock,
   Rules,
   Schedule,
   SiteGroup,
@@ -17,7 +22,10 @@ export {
 } from "./rules";
 export type {
   AppState,
+  BreakEvent,
   DaemonStatus,
   DnsGuardStatus,
+  EventKind,
+  MailAccount,
   QuitReport,
 } from "./app-state";

@@ -19,21 +19,39 @@ const WEEKDAY_DEFAULT: Weekday[] = [
 const INPUT_CLASS =
   "h-10 rounded-lg border border-line-strong bg-surface px-3 text-[15px] font-medium text-ink outline-none focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
+export interface WindowDraft {
+  start: string;
+  end: string;
+  days: Weekday[];
+  groupIds: string[];
+}
+
+const DEFAULT_DRAFT: WindowDraft = {
+  start: "22:00",
+  end: "02:00",
+  days: WEEKDAY_DEFAULT,
+  groupIds: [],
+};
+
 interface AddWindowSheetProps {
   groups: SiteGroup[];
+  draft?: WindowDraft;
+  extending?: boolean;
   onAdd: (window: TimeWindow) => void;
   onClose: () => void;
 }
 
 export function AddWindowSheet({
   groups,
+  draft = DEFAULT_DRAFT,
+  extending = false,
   onAdd,
   onClose,
 }: AddWindowSheetProps) {
-  const [days, setDays] = useState<Weekday[]>(WEEKDAY_DEFAULT);
-  const [start, setStart] = useState("22:00");
-  const [end, setEnd] = useState("02:00");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [days, setDays] = useState<Weekday[]>(draft.days);
+  const [start, setStart] = useState(draft.start);
+  const [end, setEnd] = useState(draft.end);
+  const [groupIds, setGroupIds] = useState<string[]>(draft.groupIds);
 
   const parsedStart = fromInputValue(start);
   const parsedEnd = fromInputValue(end);
@@ -80,20 +98,22 @@ export function AddWindowSheet({
       groupIds: groups
         .filter((group) => groupIds.includes(group.id))
         .map((group) => group.id),
-      enabled: false,
+      enabled: extending,
     });
   }
 
   return (
     <Sheet
-      title="시간대 추가"
+      title={extending ? "차단 연장" : "시간대 추가"}
       width="wide"
       footerNote={
-        valid
-          ? "만든 뒤 목록에서 켜야 실행됩니다"
-          : "요일과 그룹을 하나 이상 고르세요"
+        !valid
+          ? "요일과 그룹을 하나 이상 고르세요"
+          : extending
+            ? "켜진 채로 들어가고 끌 수 없습니다"
+            : "만든 뒤 목록에서 켜야 실행됩니다"
       }
-      confirmLabel="추가"
+      confirmLabel={extending ? "연장" : "추가"}
       confirmDisabled={!valid}
       onConfirm={handleConfirm}
       onClose={onClose}

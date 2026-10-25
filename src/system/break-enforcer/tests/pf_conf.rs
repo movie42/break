@@ -31,15 +31,18 @@ fn linking_adds_the_anchor_point_and_its_load_line() {
     assert!(linked.contains(BEGIN_MARKER));
     assert!(linked.trim_end().ends_with(END_MARKER));
     assert!(linked.contains("anchor \"com.movie42.break\"\n"));
-    assert!(linked
-        .contains("load anchor \"com.movie42.break\" from \"/etc/pf.anchors/com.movie42.break\"\n"));
+    assert!(linked.contains(
+        "load anchor \"com.movie42.break\" from \"/etc/pf.anchors/com.movie42.break\"\n"
+    ));
 }
 
 #[test]
 fn the_break_anchor_comes_after_the_apple_anchor() {
     let linked = apply_to_content(STOCK_PF_CONF, true);
 
-    let apple = linked.find("load anchor \"com.apple\"").expect("apple anchor");
+    let apple = linked
+        .find("load anchor \"com.apple\"")
+        .expect("apple anchor");
     let ours = linked.find(BEGIN_MARKER).expect("break marker");
     assert!(apple < ours);
 }
@@ -93,10 +96,7 @@ fn writing_reports_whether_the_file_changed() {
     assert!(is_linked(&fs::read_to_string(&path).expect("read back")));
 
     assert!(read_and_write(&path, false).expect("unlink"));
-    assert_eq!(
-        fs::read_to_string(&path).expect("read back"),
-        STOCK_PF_CONF
-    );
+    assert_eq!(fs::read_to_string(&path).expect("read back"), STOCK_PF_CONF);
     assert!(!read_and_write(&path, false).expect("unlink again"));
 }
 

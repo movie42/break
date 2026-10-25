@@ -146,7 +146,11 @@ fn is_chromium(bundle: &Path) -> bool {
     entries.flatten().any(|entry| {
         let path = entry.path();
         path.extension().and_then(|ext| ext.to_str()) == Some("framework")
-            && path.join("Versions").join("Current").join("Helpers").is_dir()
+            && path
+                .join("Versions")
+                .join("Current")
+                .join("Helpers")
+                .is_dir()
     })
 }
 

@@ -17,6 +17,7 @@ fn sample() -> Rules {
                 bundle_id: "com.apple.Safari".to_string(),
                 display_name: "Safari".to_string(),
             }],
+            preset: None,
         }],
         schedule: Schedule {
             windows: vec![TimeWindow {
@@ -28,8 +29,7 @@ fn sample() -> Rules {
                 enabled: true,
             }],
         },
-        legacy_sites: Vec::new(),
-        legacy_apps: Vec::new(),
+        ..Rules::default()
     }
 }
 
@@ -107,14 +107,9 @@ fn migrating_a_version_2_file_changes_nothing() {
 #[test]
 fn a_link_to_a_deleted_group_is_pruned() {
     let mut rules = sample();
-    rules.schedule.windows[0]
-        .group_ids
-        .push("gone".to_string());
+    rules.schedule.windows[0].group_ids.push("gone".to_string());
     rules.prune_group_links();
-    assert_eq!(
-        rules.schedule.windows[0].group_ids,
-        vec!["g1".to_string()]
-    );
+    assert_eq!(rules.schedule.windows[0].group_ids, vec!["g1".to_string()]);
 }
 
 #[test]
@@ -159,4 +154,24 @@ fn a_version_2_file_reads_every_window_as_on() {
     .expect("역직렬화 실패");
 
     assert!(rules.schedule.windows[0].enabled);
+}
+
+#[test]
+fn a_version_3_file_reads_with_no_instant_block() {
+    let raw = r#"{"version":3,"groups":[],"schedule":{"windows":[]}}"#;
+    let mut rules: Rules = serde_json::from_str(raw).expect("역직렬화 실패");
+    rules.migrate();
+    assert_eq!(rules.version, RULES_VERSION);
+    assert!(rules.instant.is_none());
+    assert!(!rules.adult_filter.enabled);
+}
+
+#[test]
+fn an_instant_block_round_trips_as_an_rfc3339_time() {
+    let raw = r#"{"version":4,"instant":{"endsAt":"2026-10-18T08:20:00Z","groupIds":["g1"]}}"#;
+    let rules: Rules = serde_json::from_str(raw).expect("역직렬화 실패");
+    let instant = rules.instant.clone().expect("즉시 차단");
+    assert_eq!(instant.group_ids, vec!["g1".to_string()]);
+    let json = serde_json::to_string(&rules).expect("직렬화 실패");
+    assert!(json.contains("\"endsAt\":\"2026-10-18T08:20:00Z\""));
 }

@@ -67,8 +67,11 @@ fn broken_json_is_quarantined_not_overwritten() {
 fn a_newer_rules_file_is_refused_instead_of_read_as_empty() {
     let dir = temp_dir("future");
     let path = dir.join(RULES_FILE_NAME);
-    fs::write(&path, r#"{"version":99,"groups":[],"schedule":{"windows":[]}}"#)
-        .expect("쓰기 실패");
+    fs::write(
+        &path,
+        r#"{"version":99,"groups":[],"schedule":{"windows":[]}}"#,
+    )
+    .expect("쓰기 실패");
 
     let error = load_from(&path).expect_err("거절해야 한다");
     assert!(matches!(

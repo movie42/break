@@ -22,7 +22,10 @@ resolver #2
 ";
 
 fn addresses(values: &[&str]) -> Vec<IpAddr> {
-    values.iter().map(|value| value.parse().expect("ip")).collect()
+    values
+        .iter()
+        .map(|value| value.parse().expect("ip"))
+        .collect()
 }
 
 #[test]
@@ -35,8 +38,12 @@ fn nameservers_are_read_in_the_order_scutil_lists_them() {
 
 #[test]
 fn the_same_nameserver_on_two_resolvers_is_listed_once() {
-    let output = "  nameserver[0] : 8.8.8.8\n  nameserver[0] : 8.8.8.8\n  nameserver[1] : 8.8.4.4\n";
-    assert_eq!(parse_nameservers(output), addresses(&["8.8.8.8", "8.8.4.4"]));
+    let output =
+        "  nameserver[0] : 8.8.8.8\n  nameserver[0] : 8.8.8.8\n  nameserver[1] : 8.8.4.4\n";
+    assert_eq!(
+        parse_nameservers(output),
+        addresses(&["8.8.8.8", "8.8.4.4"])
+    );
 }
 
 #[test]
@@ -58,7 +65,9 @@ fn output_without_any_dns_configuration_yields_nothing() {
 
 #[test]
 fn loopback_nameservers_are_never_blocked() {
-    let parsed = parse_nameservers("  nameserver[0] : 127.0.0.1\n  nameserver[1] : ::1\n  nameserver[2] : 192.168.0.1\n");
+    let parsed = parse_nameservers(
+        "  nameserver[0] : 127.0.0.1\n  nameserver[1] : ::1\n  nameserver[2] : 192.168.0.1\n",
+    );
     assert_eq!(parsed.len(), 3);
     assert_eq!(blockable(&parsed), addresses(&["192.168.0.1"]));
 }

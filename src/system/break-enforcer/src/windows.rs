@@ -12,10 +12,10 @@ impl WindowsEnforcer {
 }
 
 impl Enforcer for WindowsEnforcer {
-    fn apply_sites(&self, sites: &[SiteTarget]) -> Result<(), Error> {
+    fn apply_sites(&self, sites: &[SiteTarget], _compact: &[SiteTarget]) -> Result<bool, Error> {
         if is_dry_run() {
             log_dry_run_sites(sites);
-            return Ok(());
+            return Ok(false);
         }
         Err(Error::NotPrivileged)
     }

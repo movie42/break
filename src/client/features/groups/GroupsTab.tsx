@@ -7,12 +7,14 @@ import { PlusIcon } from "@/shared/ui/icons";
 
 import { CreateGroupSheet } from "./CreateGroupSheet";
 import { GroupCard } from "./GroupCard";
+import type { GroupPreset } from "./presets";
 
 interface GroupsTabProps {
   groups: SiteGroup[];
   windows: TimeWindow[];
   lockedGroupIds: string[];
   onCreateGroup: (name: string) => void;
+  onCreatePreset: (preset: GroupPreset) => void;
   onRenameGroup: (groupId: string, name: string) => void;
   onRemoveGroup: (groupId: string) => void;
   onAddSite: (groupId: string, input: string) => void;
@@ -24,6 +26,7 @@ export function GroupsTab({
   windows,
   lockedGroupIds,
   onCreateGroup,
+  onCreatePreset,
   onRenameGroup,
   onRemoveGroup,
   onAddSite,
@@ -33,6 +36,11 @@ export function GroupsTab({
 
   function handleCreate(name: string) {
     onCreateGroup(name);
+    setCreating(false);
+  }
+
+  function handleCreatePreset(preset: GroupPreset) {
+    onCreatePreset(preset);
     setCreating(false);
   }
 
@@ -82,7 +90,11 @@ export function GroupsTab({
 
       {creating && (
         <CreateGroupSheet
+          usedPresets={groups.flatMap((group) =>
+            group.preset ? [group.preset] : [],
+          )}
           onCreate={handleCreate}
+          onCreatePreset={handleCreatePreset}
           onClose={() => setCreating(false)}
         />
       )}

@@ -1,3 +1,4 @@
+pub mod client;
 pub mod install;
 pub mod paths;
 pub mod plist;

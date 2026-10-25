@@ -1,21 +1,36 @@
 import { useEffect, useState } from "react";
 
 import { GroupsTab } from "@/features/groups/GroupsTab";
+import { DowntimeBanner } from "@/features/history/DowntimeBanner";
+import { HistoryTab } from "@/features/history/HistoryTab";
+import { ConsentScreen } from "@/features/protect/ConsentScreen";
+import { ProtectTab } from "@/features/protect/ProtectTab";
+import type { GroupPreset } from "@/features/groups/presets";
 import { coversNow, currentSession } from "@/features/schedule/active";
 import { ScheduleTab } from "@/features/schedule/ScheduleTab";
 import { DaemonNotice } from "@/features/settings/DaemonNotice";
 import { SettingsPopover } from "@/features/settings/SettingsPopover";
 import { StatusDot } from "@/features/settings/StatusDot";
 import {
+  addRecipient,
+  cancelAdultFilterOff,
+  cancelRecipientRemoval,
+  consentAdultFilter,
+  enableAdultFilter,
   installDaemon,
   loadRules,
+  quitApp,
   quitBrowsers,
+  requestAdultFilterOff,
+  requestRecipientRemoval,
   runningBrowsers,
   saveRules,
+  setMailAccount,
+  setPassword,
   uninstallDaemon,
 } from "@/shared/api/rules";
 import { useNow } from "@/shared/hooks/useNow";
-import type { AppState, Rules, TimeWindow } from "@/shared/types";
+import type { AppState, MailAccount, Rules, TimeWindow } from "@/shared/types";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
 import { GearIcon } from "@/shared/ui/icons";
 import { IconButton } from "@/shared/ui/IconButton";
@@ -23,6 +38,8 @@ import { IconButton } from "@/shared/ui/IconButton";
 const TABS = [
   { id: "schedule", label: "시간대" },
   { id: "sites", label: "사이트" },
+  { id: "history", label: "기록" },
+  { id: "protect", label: "보호" },
 ] as const;
 
 const TICK_MS = 5000;
@@ -38,6 +55,8 @@ export default function App() {
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const [openBrowsers, setOpenBrowsers] = useState<string[] | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [consentPending, setConsentPending] = useState(false);
+  const [consentError, setConsentError] = useState<string | null>(null);
   const now = useNow(TICK_MS);
 
   useEffect(() => {
@@ -47,7 +66,8 @@ export default function App() {
   }, []);
 
   const windows = state?.rules.schedule.windows ?? [];
-  const session = currentSession(windows, now);
+  const instant = state?.rules.instant ?? null;
+  const session = currentSession(windows, instant, now);
   const runningWindowIds = session?.windowIds ?? [];
   const lockedGroupIds = session?.groupIds ?? [];
 
@@ -62,6 +82,32 @@ export default function App() {
       );
     } catch (cause: unknown) {
       setError(String(cause));
+    }
+  }
+
+  async function act(call: () => Promise<AppState>, done?: string) {
+    setError(null);
+    setNotice(null);
+    try {
+      setState(await call());
+      if (done !== undefined) setNotice(done);
+    } catch (cause: unknown) {
+      setError(String(cause));
+    }
+  }
+
+  async function handleConsent(password: string | null) {
+    setConsentPending(true);
+    setConsentError(null);
+    try {
+      if (password !== null) {
+        setState(await setPassword(password));
+      }
+      setState(await consentAdultFilter());
+    } catch (cause: unknown) {
+      setConsentError(String(cause));
+    } finally {
+      setConsentPending(false);
     }
   }
 
@@ -94,7 +140,38 @@ export default function App() {
         windows: [...state.rules.schedule.windows, window],
       },
     });
-    setNotice("시간대를 만들었습니다. 목록에서 켜야 실행됩니다.");
+    setNotice(
+      window.enabled
+        ? "연장했습니다. 켜진 채로 들어갔습니다."
+        : "시간대를 만들었습니다. 목록에서 켜야 실행됩니다.",
+    );
+  }
+
+  async function handleInstant(endsAt: Date, groupIds: string[]) {
+    if (!state) return;
+
+    const current = state.rules.instant;
+    const stillRunning =
+      current !== null && new Date(current.endsAt).getTime() > Date.now();
+    const keptEnd = stillRunning ? new Date(current.endsAt).getTime() : 0;
+    const keptGroups = stillRunning ? current.groupIds : [];
+
+    setError(null);
+    setNotice(null);
+    await commit({
+      ...state.rules,
+      instant: {
+        endsAt: new Date(Math.max(keptEnd, endsAt.getTime())).toISOString(),
+        groupIds: [
+          ...keptGroups,
+          ...groupIds.filter((id) => !keptGroups.includes(id)),
+        ],
+      },
+    });
+
+    if (groupIds.length > 0) {
+      await askToQuitBrowsers();
+    }
   }
 
   async function handleToggleWindow(id: string, next: boolean) {
@@ -167,6 +244,27 @@ export default function App() {
       groups: [
         ...state.rules.groups,
         { id: crypto.randomUUID(), name, sites: [], apps: [] },
+      ],
+    });
+  }
+
+  function handleCreatePreset(preset: GroupPreset) {
+    if (!state) return;
+    if (state.rules.groups.some((group) => group.preset === preset.id)) {
+      setError("이미 만든 추천 그룹입니다.");
+      return;
+    }
+    void commit({
+      ...state.rules,
+      groups: [
+        ...state.rules.groups,
+        {
+          id: crypto.randomUUID(),
+          name: preset.name,
+          sites: preset.hosts.map((host) => ({ host })),
+          apps: [],
+          preset: preset.id,
+        },
       ],
     });
   }
@@ -303,13 +401,55 @@ export default function App() {
               <p className="mb-3 text-[13px] text-ink-muted">{notice}</p>
             )}
 
+            {tab !== "history" && <DowntimeBanner />}
+
+            {tab === "history" && <HistoryTab />}
+
+            {tab === "protect" && (
+              <ProtectTab
+                rules={state.rules}
+                mailAccount={state.mailAccount}
+                guarded={state.guarded}
+                releaseDelaySeconds={state.releaseDelaySeconds}
+                onRequestOff={(password) =>
+                  void act(
+                    () => requestAdultFilterOff(password),
+                    "끄기를 신청했습니다. 기다리는 동안 취소할 수 있습니다.",
+                  )
+                }
+                onCancelOff={() => void act(cancelAdultFilterOff)}
+                onEnable={() => void act(enableAdultFilter)}
+                onAddRecipient={(email) =>
+                  void act(() => addRecipient(email), "알림 주소를 넣었습니다.")
+                }
+                onRequestRemoval={(email, password) =>
+                  void act(
+                    () => requestRecipientRemoval(email, password),
+                    "빼기를 신청했습니다. 기다리는 동안 취소할 수 있습니다.",
+                  )
+                }
+                onCancelRemoval={(email) =>
+                  void act(() => cancelRecipientRemoval(email))
+                }
+                onSetAccount={(account: MailAccount, password) =>
+                  void act(
+                    () => setMailAccount(account, password),
+                    "메일 계정을 저장했습니다.",
+                  )
+                }
+              />
+            )}
+
             {tab === "schedule" && (
               <ScheduleTab
                 windows={windows}
+                instant={instant}
                 groups={state.rules.groups}
                 session={session}
-                now={now}
                 onAdd={handleAddWindow}
+                onInstant={(endsAt, groupIds) =>
+                  void handleInstant(endsAt, groupIds)
+                }
                 onToggle={(id, next) => void handleToggleWindow(id, next)}
                 onRemove={handleRemoveWindow}
               />
@@ -321,6 +461,7 @@ export default function App() {
                 windows={windows}
                 lockedGroupIds={lockedGroupIds}
                 onCreateGroup={handleCreateGroup}
+                onCreatePreset={handleCreatePreset}
                 onRenameGroup={handleRenameGroup}
                 onRemoveGroup={handleRemoveGroup}
                 onAddSite={handleAddSite}
@@ -330,6 +471,16 @@ export default function App() {
           </>
         )}
       </div>
+
+      {state !== null && state.rules.adultFilter.consentedAt === null && (
+        <ConsentScreen
+          needsPassword={state.rules.lock.passwordHash === null}
+          pending={consentPending}
+          error={consentError}
+          onQuit={() => void quitApp()}
+          onAgree={(password) => void handleConsent(password)}
+        />
+      )}
 
       {openBrowsers !== null && (
         <ConfirmDialog

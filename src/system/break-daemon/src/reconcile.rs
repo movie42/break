@@ -23,7 +23,7 @@ impl Guard {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
-    Blocked(Vec<String>, Guard),
+    Blocked(Vec<String>, usize, Guard),
     Cleared,
     RulesUnreadable(String),
     Failed(String),
@@ -32,8 +32,17 @@ pub enum Outcome {
 impl Outcome {
     pub fn log_line(&self) -> String {
         match self {
-            Outcome::Blocked(hosts, guard) => {
-                format!("차단 적용: {}{}", hosts.join(", "), guard.log_suffix())
+            Outcome::Blocked(hosts, adult, guard) => {
+                let adult = if *adult > 0 {
+                    format!(" + 유해사이트 {adult}개")
+                } else {
+                    String::new()
+                };
+                format!(
+                    "차단 적용: {}{adult}{}",
+                    hosts.join(", "),
+                    guard.log_suffix()
+                )
             }
             Outcome::Cleared => "차단 해제".to_string(),
             Outcome::RulesUnreadable(message) => {
@@ -44,51 +53,77 @@ impl Outcome {
     }
 }
 
-pub fn desired_sites(rules_path: &Path) -> Result<Vec<SiteTarget>, String> {
+pub fn desired(rules_path: &Path) -> Result<(Vec<SiteTarget>, bool), String> {
     let rules = store::load_from(rules_path).map_err(|err| err.to_string())?;
-    Ok(schedule::blocked_sites_now(&rules))
+    Ok((
+        schedule::blocked_sites_now(&rules),
+        rules.adult_filter.enabled,
+    ))
 }
 
-pub fn tick<E: Enforcer>(enforcer: &E, rules_path: &Path) -> Outcome {
-    let sites = match desired_sites(rules_path) {
-        Ok(sites) => sites,
+#[cfg(test)]
+pub fn tick<E: Enforcer>(enforcer: &E, rules_path: &Path, adult: &[SiteTarget]) -> Outcome {
+    tick_report(enforcer, rules_path, adult).0
+}
+
+pub fn tick_report<E: Enforcer>(
+    enforcer: &E,
+    rules_path: &Path,
+    adult: &[SiteTarget],
+) -> (Outcome, bool) {
+    let (sites, adult_on) = match desired(rules_path) {
+        Ok(desired) => desired,
         Err(message) => {
-            return match clear_all(enforcer) {
+            let outcome = match clear_all(enforcer) {
                 Ok(()) => Outcome::RulesUnreadable(message),
                 Err(message) => Outcome::Failed(message),
             };
+            return (outcome, false);
         }
     };
 
-    apply(enforcer, &sites)
+    apply(enforcer, &sites, if adult_on { adult } else { &[] })
 }
 
 pub fn clear<E: Enforcer>(enforcer: &E) -> Outcome {
-    apply(enforcer, &[])
+    apply(enforcer, &[], &[]).0
 }
 
-fn apply<E: Enforcer>(enforcer: &E, sites: &[SiteTarget]) -> Outcome {
-    if sites.is_empty() {
-        return match clear_all(enforcer) {
+fn apply<E: Enforcer>(enforcer: &E, sites: &[SiteTarget], adult: &[SiteTarget]) -> (Outcome, bool) {
+    if sites.is_empty() && adult.is_empty() {
+        let outcome = match clear_all(enforcer) {
             Ok(()) => Outcome::Cleared,
             Err(message) => Outcome::Failed(message),
         };
+        return (outcome, false);
     }
 
-    if let Err(err) = enforcer.apply_sites(sites) {
-        return Outcome::Failed(err.to_string());
-    }
+    let compact: Vec<SiteTarget> = adult
+        .iter()
+        .filter(|site| !sites.iter().any(|kept| kept.host == site.host))
+        .cloned()
+        .collect();
+
+    let hosts_changed = match enforcer.apply_sites(sites, &compact) {
+        Ok(changed) => changed,
+        Err(err) => return (Outcome::Failed(err.to_string()), false),
+    };
 
     let hosts = sites.iter().map(|site| site.host.clone()).collect();
-    let policy = enforcer.apply_browser_policy(sites);
+    let policy = if sites.is_empty() {
+        enforcer.clear_browser_policy()
+    } else {
+        enforcer.apply_browser_policy(sites)
+    };
     let dns = enforcer.apply_dns_guard();
 
-    match (policy, dns) {
-        (Ok(()), Ok(())) => Outcome::Blocked(hosts, Guard::Applied),
+    let outcome = match (policy, dns) {
+        (Ok(()), Ok(())) => Outcome::Blocked(hosts, adult.len(), Guard::Applied),
         (Err(err), _) | (Ok(()), Err(err)) => {
-            Outcome::Blocked(hosts, Guard::Failed(err.to_string()))
+            Outcome::Blocked(hosts, adult.len(), Guard::Failed(err.to_string()))
         }
-    }
+    };
+    (outcome, hosts_changed)
 }
 
 fn clear_all<E: Enforcer>(enforcer: &E) -> Result<(), String> {
@@ -109,13 +144,16 @@ mod tests {
     use std::cell::RefCell;
     use std::fs;
 
-    use break_core::rules::{AppTarget, Rules, Schedule, SiteGroup, TimeOfDay, TimeWindow, Weekday};
+    use break_core::rules::{
+        AppTarget, Rules, Schedule, SiteGroup, TimeOfDay, TimeWindow, Weekday,
+    };
 
     use super::*;
 
     #[derive(Default)]
     struct FakeEnforcer {
         applied: RefCell<Vec<Vec<String>>>,
+        compact: RefCell<Vec<Vec<String>>>,
         cleared: RefCell<usize>,
         guard_applied: RefCell<usize>,
         guard_cleared: RefCell<usize>,
@@ -134,11 +172,14 @@ mod tests {
     }
 
     impl Enforcer for FakeEnforcer {
-        fn apply_sites(&self, sites: &[SiteTarget]) -> Result<(), Error> {
+        fn apply_sites(&self, sites: &[SiteTarget], compact: &[SiteTarget]) -> Result<bool, Error> {
             self.applied
                 .borrow_mut()
                 .push(sites.iter().map(|site| site.host.clone()).collect());
-            Ok(())
+            self.compact
+                .borrow_mut()
+                .push(compact.iter().map(|site| site.host.clone()).collect());
+            Ok(true)
         }
         fn clear_sites(&self) -> Result<(), Error> {
             *self.cleared.borrow_mut() += 1;
@@ -176,6 +217,7 @@ mod tests {
     fn blocked(hosts: &[&str]) -> Outcome {
         Outcome::Blocked(
             hosts.iter().map(|host| (*host).to_string()).collect(),
+            0,
             Guard::Applied,
         )
     }
@@ -201,6 +243,7 @@ mod tests {
                     })
                     .collect(),
                 apps: Vec::new(),
+                preset: None,
             }],
             schedule: Schedule {
                 windows: vec![TimeWindow {
@@ -229,7 +272,7 @@ mod tests {
         let enforcer = FakeEnforcer::default();
         let missing = std::env::temp_dir().join("break-daemon-test-missing/rules.json");
 
-        assert_eq!(tick(&enforcer, &missing), Outcome::Cleared);
+        assert_eq!(tick(&enforcer, &missing, &[]), Outcome::Cleared);
         assert_eq!(*enforcer.cleared.borrow(), 1);
     }
 
@@ -238,7 +281,7 @@ mod tests {
         let enforcer = FakeEnforcer::default();
         let path = rules_file("blocking", &always_blocking(&["youtube.com"]));
 
-        assert_eq!(tick(&enforcer, &path), blocked(&["youtube.com"]));
+        assert_eq!(tick(&enforcer, &path, &[]), blocked(&["youtube.com"]));
         assert_eq!(*enforcer.applied.borrow(), vec![vec!["youtube.com"]]);
         assert_eq!(*enforcer.guard_applied.borrow(), 1);
         assert_eq!(*enforcer.policy_applied.borrow(), vec![vec!["youtube.com"]]);
@@ -251,7 +294,7 @@ mod tests {
         rules.schedule.windows.clear();
         let path = rules_file("no-window", &rules);
 
-        assert_eq!(tick(&enforcer, &path), Outcome::Cleared);
+        assert_eq!(tick(&enforcer, &path, &[]), Outcome::Cleared);
     }
 
     #[test]
@@ -261,7 +304,7 @@ mod tests {
         rules.schedule.windows[0].group_ids.clear();
         let path = rules_file("no-group", &rules);
 
-        assert_eq!(tick(&enforcer, &path), Outcome::Cleared);
+        assert_eq!(tick(&enforcer, &path, &[]), Outcome::Cleared);
     }
 
     #[test]
@@ -275,10 +318,11 @@ mod tests {
                 host: "coupang.com".to_string(),
             }],
             apps: Vec::new(),
+            preset: None,
         });
         let path = rules_file("one-group", &rules);
 
-        assert_eq!(tick(&enforcer, &path), blocked(&["youtube.com"]));
+        assert_eq!(tick(&enforcer, &path, &[]), blocked(&["youtube.com"]));
     }
 
     #[test]
@@ -286,11 +330,12 @@ mod tests {
         let enforcer = FakeEnforcer::with_failing_guard();
         let path = rules_file("guard-fails", &always_blocking(&["youtube.com"]));
 
-        let outcome = tick(&enforcer, &path);
+        let outcome = tick(&enforcer, &path, &[]);
         assert_eq!(
             outcome,
             Outcome::Blocked(
                 vec!["youtube.com".to_string()],
+                0,
                 Guard::Failed(Error::NotPrivileged.to_string())
             )
         );
@@ -313,7 +358,7 @@ mod tests {
         rules.schedule.windows.clear();
         let path = rules_file("clears-guard", &rules);
 
-        assert_eq!(tick(&enforcer, &path), Outcome::Cleared);
+        assert_eq!(tick(&enforcer, &path, &[]), Outcome::Cleared);
         assert_eq!(*enforcer.cleared.borrow(), 1);
         assert_eq!(*enforcer.guard_cleared.borrow(), 1);
         assert_eq!(*enforcer.policy_cleared.borrow(), 1);
@@ -325,5 +370,67 @@ mod tests {
         assert_eq!(clear(&enforcer), Outcome::Cleared);
         assert_eq!(*enforcer.cleared.borrow(), 1);
         assert_eq!(*enforcer.guard_cleared.borrow(), 1);
+    }
+
+    fn adult_list(hosts: &[&str]) -> Vec<SiteTarget> {
+        hosts
+            .iter()
+            .map(|host| SiteTarget {
+                host: (*host).to_string(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_adult_list_goes_to_hosts_but_not_the_browser_policy() {
+        let enforcer = FakeEnforcer::default();
+        let mut rules = always_blocking(&["youtube.com"]);
+        rules.adult_filter.enabled = true;
+        let path = rules_file("adult-on", &rules);
+
+        let outcome = tick(&enforcer, &path, &adult_list(&["adult.example"]));
+        assert_eq!(
+            outcome,
+            Outcome::Blocked(vec!["youtube.com".to_string()], 1, Guard::Applied)
+        );
+        assert_eq!(*enforcer.applied.borrow(), vec![vec!["youtube.com"]]);
+        assert_eq!(*enforcer.compact.borrow(), vec![vec!["adult.example"]]);
+        assert_eq!(*enforcer.policy_applied.borrow(), vec![vec!["youtube.com"]]);
+    }
+
+    #[test]
+    fn the_adult_list_blocks_even_with_no_window() {
+        let enforcer = FakeEnforcer::default();
+        let mut rules = always_blocking(&["youtube.com"]);
+        rules.schedule.windows.clear();
+        rules.adult_filter.enabled = true;
+        let path = rules_file("adult-only", &rules);
+
+        let outcome = tick(&enforcer, &path, &adult_list(&["adult.example"]));
+        assert_eq!(outcome, Outcome::Blocked(Vec::new(), 1, Guard::Applied));
+        assert_eq!(*enforcer.policy_cleared.borrow(), 1);
+        assert!(enforcer.policy_applied.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_off_adult_filter_ignores_the_list() {
+        let enforcer = FakeEnforcer::default();
+        let mut rules = always_blocking(&["youtube.com"]);
+        rules.schedule.windows.clear();
+        let path = rules_file("adult-off", &rules);
+
+        assert_eq!(
+            tick(&enforcer, &path, &adult_list(&["adult.example"])),
+            Outcome::Cleared
+        );
+    }
+
+    #[test]
+    fn the_log_line_counts_the_adult_list_instead_of_naming_it() {
+        let outcome = Outcome::Blocked(vec!["youtube.com".to_string()], 80_000, Guard::Applied);
+        assert_eq!(
+            outcome.log_line(),
+            "차단 적용: youtube.com + 유해사이트 80000개 (브라우저 정책 + 보안 DNS 차단)"
+        );
     }
 }
